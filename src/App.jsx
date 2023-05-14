@@ -10,17 +10,48 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { Alchemy, Network } from 'alchemy-sdk';
-import { useState } from 'react';
+import { ethers } from "ethers";
+import { useEffect, useState } from "react";
+import nft from '../component/nft.png'
+// import Web3Modal from 'web3modal';
+
+// create a Web3Provider instance using the user's browser window.ethereum
+const provider = new ethers.providers.Web3Provider(window.ethereum);
+
+// create a Signer instance using the provider instance
+const signer = provider.getSigner();
+
 
 function App() {
-  const [userAddress, setUserAddress] = useState('');
+  const [userAddress, setUserAddress] = useState("");
   const [results, setResults] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [hasQueried, setHasQueried] = useState(false);
   const [tokenDataObjects, setTokenDataObjects] = useState([]);
+  const [addressError, setAddressError] = useState("");
 
   async function getNFTsForOwner() {
+
+    setIsLoading(true);
+    setAddressError(""); // Clear any previous error message
+   
+ 
+    // check if the entered address is valid
+    if (!ethers.utils.isAddress(userAddress)) {
+      setIsLoading(false);
+      setAddressError("Invalid address. Please enter a valid Ethereum address.");
+      return;
+    }
+  
+    // check if the entered address has a reverse resolution in ENS
+    if (!await provider.resolveName(userAddress)) {
+      setIsLoading(false);
+      setAddressError("Invalid address. Please enter a valid Ethereum address or ENS name.");
+      return;
+    }
+
     const config = {
-      apiKey: '<-- COPY-PASTE YOUR ALCHEMY API KEY HERE -->',
+      apiKey: 'z7qfXKjkYzw3kivQJc1IdeMhtKXci2Kn',
       network: Network.ETH_MAINNET,
     };
 
@@ -40,7 +71,48 @@ function App() {
 
     setTokenDataObjects(await Promise.all(tokenDataPromises));
     setHasQueried(true);
+    setIsLoading(false);
   }
+
+  async function connectWallet() {
+    try {
+      await window.ethereum.enable();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // use the useEffect hook to get the user's Ethereum address and set it as a state variable
+ useEffect(() => {
+  async function getAccounts() {
+    const accounts = await provider.listAccounts();
+    if (accounts.length > 0) {
+      setUserAddress(accounts[0]);
+    }
+  }
+
+  async function handleAccountsChanged(accounts) {
+    if (accounts.length > 0) {
+      setUserAddress(accounts[0]);
+    }
+  }
+
+  if (window.ethereum) {
+    window.ethereum.on('accountsChanged', handleAccountsChanged);
+    getAccounts();
+  }
+
+  // Clean up the event listener when the component unmounts
+  return () => {
+    if (window.ethereum) {
+      window.ethereum.off('accountsChanged', handleAccountsChanged);
+    }
+  };
+}, []);
+
+
+
+
   return (
     <Box w="100vw">
       <Center>
@@ -65,7 +137,11 @@ function App() {
       >
         <Heading mt={42}>Get all the ERC-721 tokens of this address:</Heading>
         <Input
-          onChange={(e) => setUserAddress(e.target.value)}
+          value={userAddress}
+          onChange={(e) => {
+            setUserAddress(e.target.value);
+            setAddressError("");
+          }}
           color="black"
           w="600px"
           textAlign="center"
@@ -73,24 +149,37 @@ function App() {
           bgColor="white"
           fontSize={24}
         />
+        {addressError && <Text color="red">{addressError}</Text>}
         <Button fontSize={20} onClick={getNFTsForOwner} mt={36} bgColor="blue">
           Fetch NFTs
         </Button>
 
+        <Button fontSize={15} mt={36} bgColor="red" onClick={connectWallet}>
+          Connect to a Wallet
+        </Button>
+
         <Heading my={36}>Here are your NFTs:</Heading>
 
-        {hasQueried ? (
+        {isLoading ? (
+          <div className="parentload">
+            <div className="loader"></div>
+          </div>
+        ) : hasQueried ? (
           <SimpleGrid w={'90vw'} columns={4} spacing={24}>
             {results.ownedNfts.map((e, i) => {
               return (
                 <Flex
                   flexDir={'column'}
                   color="white"
-                  bg="blue"
+                  bg="#263A29"
                   w={'20vw'}
+                  
+                  style={{
+                    boxShadow: "0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19)"
+                  }}
                   key={e.id}
                 >
-                  <Box>
+                  <Box textAlign="center">
                     <b>Name:</b>{' '}
                     {tokenDataObjects[i].title?.length === 0
                       ? 'No Name'
@@ -102,6 +191,11 @@ function App() {
                       'https://via.placeholder.com/200'
                     }
                     alt={'Image'}
+                    onError={(e) => {
+                      e.target.src = nft;
+                    }}
+                    height="300px"
+                    width="270px"
                   />
                 </Flex>
               );
